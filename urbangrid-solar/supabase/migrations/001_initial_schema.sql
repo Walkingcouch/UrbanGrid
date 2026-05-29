@@ -134,7 +134,7 @@ CREATE TABLE contracts (
   status                    contract_status NOT NULL DEFAULT 'draft',
   term_years                INTEGER NOT NULL DEFAULT 10 CHECK (term_years >= 10),
   start_date                DATE,
-  end_date                  DATE GENERATED ALWAYS AS (start_date + (term_years || ' years')::INTERVAL) STORED,
+  end_date                  DATE,
   monthly_rent_rate         NUMERIC(10,2) NOT NULL CHECK (monthly_rent_rate >= 0),
   ppa_rate_per_kwh          NUMERIC(8,4),
   annual_escalation_pct     NUMERIC(5,2) NOT NULL DEFAULT 3.00,
@@ -155,6 +155,21 @@ CREATE INDEX idx_contracts_status ON contracts(status);
 
 CREATE TRIGGER contracts_updated_at BEFORE UPDATE ON contracts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Auto-compute end_date from start_date + term_years
+CREATE OR REPLACE FUNCTION compute_contract_end_date()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.start_date IS NOT NULL THEN
+    NEW.end_date := NEW.start_date + make_interval(years => NEW.term_years);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER contracts_compute_end_date
+  BEFORE INSERT OR UPDATE OF start_date, term_years ON contracts
+  FOR EACH ROW EXECUTE FUNCTION compute_contract_end_date();
 
 -- ============================================================
 -- JOBS (Contractor Tickets)
